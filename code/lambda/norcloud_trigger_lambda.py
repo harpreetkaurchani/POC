@@ -10,7 +10,6 @@ import boto3
 import os
 import logging
 import sys
-from datetime import datetime
 
 glue_client = boto3.client('glue', region_name=os.environ['AWS_REGION_NAME'])
 

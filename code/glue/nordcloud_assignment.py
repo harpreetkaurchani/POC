@@ -1,8 +1,10 @@
 ########################################
-# Author : Harpreet Kaur
-# date: 19 Oct 2021
+# Author     : Harpreet Kaur
+# date       : 19 Oct 2021
 # Description: It is a glue Python Shell Job which Read bitcoin csv file and create new file with previous year data
 #               It also display the mean, max and min to std output along with plotting a line chart
+# Trigger    : Currently this job is triggered by a lambda (lambda is based on S3 trigger). So as soon as file is dropped
+#              in S3 lambda will be trigger which in turn click Glue Job
 ########################################
 import boto3
 import pandas as pd
@@ -13,8 +15,22 @@ import sys
 import matplotlib.pyplot as plt
 from nordcloud_assignment_properties import *
 from awsglue.utils import getResolvedOptions
-global logger
 
+def getLogger(name, level):
+    '''
+    :param name:
+    :param level:
+    :return: logger obj
+    '''
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    ch = logging.StreamHandler(sys.stderr)
+    ch.setLevel(level)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
 
 def convert_to_euro(data:pd.DataFrame, exchange_rate:float, column_name:str) -> pd.DataFrame:
     '''
@@ -22,6 +38,7 @@ def convert_to_euro(data:pd.DataFrame, exchange_rate:float, column_name:str) -> 
     :param exchange_rate:
     :return: pandas_dataframe with only one column converted to EURo from USD
     '''
+    global logger
     try:
         return data.apply(lambda x: round(x*exchange_rate,2))
     except Exception as e:
@@ -34,6 +51,7 @@ def create_dataframe(file_path: str)-> pd.DataFrame:
     :param file_path:
     :return: Pandas DataFrame created by reading the csv file
     '''
+    global logger
     try:
         data= pd.read_csv(file_path)
         return data
@@ -48,6 +66,7 @@ def convert_str_to_date(data:pd.DataFrame, column_name:str)-> pd.DataFrame:
     :param column_name:
     :return: Pandas dataFrame with only Date field converted from str to Date type
     '''
+    global logger
     try:
         return data.apply(lambda x: datetime.strptime(x, '%Y-%m-%d').date())
     except Exception as e:
@@ -62,6 +81,7 @@ def write_csv_to_s3(data:pd.DataFrame, columns:list, bucket:str, dest_path:str):
     :param output_path:
     :param columns:
     '''
+    global logger
     try:
         s3_client = boto3.client('s3')
         with StringIO() as csv_buffer:
@@ -81,6 +101,7 @@ def save_plot_to_s3(plt:plt, bucket:str, image_path:str):
     :param bucket:
     :param image_path:
     '''
+    global logger
     try:
         img_buffer = BytesIO()
         plt.savefig(img_buffer, format='png')
@@ -96,10 +117,8 @@ def save_plot_to_s3(plt:plt, bucket:str, image_path:str):
 
 if __name__ == "__main__":
     global logger
-    logger = logging.getLogger('btc_filtering')
-    logger.setLevel(log_level)
-    args = getResolvedOptions(sys.argv,
-                              ['input_key'])
+    logger = getLogger('btc_filtering', log_level)
+    args = getResolvedOptions(sys.argv, ['input_key'])
 
     try:
         logger.debug('Create dataframe using the file')
