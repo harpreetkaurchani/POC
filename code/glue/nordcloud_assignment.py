@@ -16,10 +16,12 @@ import matplotlib.pyplot as plt
 from nordcloud_assignment_properties import *
 from awsglue.utils import getResolvedOptions
 
+s3_client = boto3.client('s3')
+
 def getLogger(name, level):
     '''
-    :param name:
-    :param level:
+    :param name: logger name
+    :param level: log level like INFO or DEBUG
     :return: logger obj
     '''
     logger = logging.getLogger(name)
@@ -34,8 +36,8 @@ def getLogger(name, level):
 
 def convert_to_euro(data:pd.DataFrame, exchange_rate:float, column_name:str) -> pd.DataFrame:
     '''
-    :param df:
-    :param exchange_rate:
+    :param df: pandas dataframe with one column
+    :param exchange_rate: float value needed to convert USD to Euro
     :return: pandas_dataframe with only one column converted to EURo from USD
     '''
     global logger
@@ -48,7 +50,7 @@ def convert_to_euro(data:pd.DataFrame, exchange_rate:float, column_name:str) -> 
 
 def create_dataframe(file_path: str)-> pd.DataFrame:
     '''
-    :param file_path:
+    :param file_path: Source file path received from Lambda trigger as input_key
     :return: Pandas DataFrame created by reading the csv file
     '''
     global logger
@@ -62,8 +64,8 @@ def create_dataframe(file_path: str)-> pd.DataFrame:
 
 def convert_str_to_date(data:pd.DataFrame, column_name:str)-> pd.DataFrame:
     '''
-    :param df:
-    :param column_name:
+    :param df: pandas dataframe with one colume that needs to be converted from str to date
+    :param column_name: column name on which operation is applied
     :return: Pandas dataFrame with only Date field converted from str to Date type
     '''
     global logger
@@ -76,14 +78,13 @@ def convert_str_to_date(data:pd.DataFrame, column_name:str)-> pd.DataFrame:
 
 def write_csv_to_s3(data:pd.DataFrame, columns:list, bucket:str, dest_path:str):
     '''
-    :param df:
-    :param bucket:
-    :param output_path:
-    :param columns:
+    :param df: final pandas dataframe with previous year data to be written to S3
+    :param bucket: output bucket
+    :param output_path: path in the output bucket to write the csv
+    :param columns: columns to be written in the output csv file
     '''
     global logger
     try:
-        s3_client = boto3.client('s3')
         with StringIO() as csv_buffer:
             data.to_csv(csv_buffer, columns=columns, index=False)
             _ = s3_client.put_object(
@@ -97,18 +98,16 @@ def write_csv_to_s3(data:pd.DataFrame, columns:list, bucket:str, dest_path:str):
 
 def save_plot_to_s3(plt:plt, bucket:str, image_path:str):
     '''
-    :param plt:
-    :param bucket:
-    :param image_path:
+    :param plt: line plot created between date and volume
+    :param bucket: dest bucket
+    :param image_path: path in the output bucket to export the image of line plot
     '''
     global logger
     try:
         img_buffer = BytesIO()
         plt.savefig(img_buffer, format='png')
         img_buffer.seek(0)
-        s3 = boto3.resource('s3')
-        bucket = s3.Bucket(bucket)
-        bucket.put_object(Body=img_buffer, ContentType='image/png',
+        s3_client.put_object(Bucket=bucket, Body=img_buffer, ContentType='image/png',
                           Key=image_path+f"ingest_dt={datetime.now().strftime('%Y%m%d%H%M')}/plot.png")
     except Exception as e:
         msg=f'failed while writing plot as image to s3 bucket {bucket} at  {image_path} prefix due to: {e}'
