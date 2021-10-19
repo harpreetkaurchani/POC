@@ -1,11 +1,10 @@
 ########################################
 # Author : Harpreet Kaur
 # date: 19 Oct 2021
-# Description: Read bitcoin csv file and create new file with previous year data
+# Description: It is a glue Python Shell Job which Read bitcoin csv file and create new file with previous year data
 #               It also display the mean, max and min to std output along with plotting a line chart
 ########################################
 import boto3
-import pandas
 import pandas as pd
 from io import StringIO, BytesIO
 from datetime import timedelta, datetime
@@ -16,71 +15,70 @@ from nordcloud_assignment_properties import *
 global logger
 
 
-def convert_to_euro(df:pandas.DataFrame, exchange_rate:float) -> pandas.DataFrame:
+def convert_to_euro(data:pd.DataFrame, exchange_rate:float, column_name:str) -> pd.DataFrame:
     '''
     :param df:
     :param exchange_rate:
-    :return:
+    :return: pandas_dataframe with only one column converted to EURo from USD
     '''
     try:
-        return df.apply(lambda x: round(x*exchange_rate,2))
+        return data.apply(lambda x: round(x*exchange_rate,2))
     except Exception as e:
-        msg= f'Failed while converting USD to EUR due to: {e}'
+        msg= f'Failed while converting values of column {column_name} from USD to EUR due to: {e}'
         raise Exception(msg)
 
 
-def create_dataframe(file_path: str)-> pandas.DataFrame:
+def create_dataframe(file_path: str)-> pd.DataFrame:
     '''
     :param file_path:
-    :return:
+    :return: Pandas DataFrame created by reading the csv file
     '''
     try:
-        df= pd.read_csv(file_path)
-        return df
+        data= pd.read_csv(file_path)
+        return data
     except Exception as e:
-        msg = f'Failed while creating csv file due to: {e}'
+        msg = f'Failed while creating dataframe from csv file {file_path} due to: {e}'
         raise Exception(msg)
 
 
-def convert_str_to_date(df:pandas.DataFrame, column_name:str)-> pandas.DataFrame:
+def convert_str_to_date(data:pd.DataFrame, column_name:str)-> pd.DataFrame:
     '''
     :param df:
     :param column_name:
-    :return:
+    :return: Pandas dataFrame with only Date field converted from str to Date type
     '''
     try:
-        return df.apply(lambda x: datetime.strptime(x, '%Y-%m-%d').date())
+        return data.apply(lambda x: datetime.strptime(x, '%Y-%m-%d').date())
     except Exception as e:
-        msg = f'Failed while converting {column_name} to date type from string due to: {e}'
+        msg = f'Failed while converting data type of {column_name} to date type from string due to: {e}'
         raise Exception(msg)
 
 
-def write_csv_to_s3(df:pandas.DataFrame, columns:list, bucket:str, output_path:str):
+def write_csv_to_s3(data:pd.DataFrame, columns:list, bucket:str, dest_path:str):
     '''
     :param df:
     :param bucket:
     :param output_path:
     :param columns:
-    :return:
     '''
     try:
         s3_client = boto3.client('s3')
         with StringIO() as csv_buffer:
-            df.to_csv(csv_buffer, columns=columns, index=False)
+            data.to_csv(csv_buffer, columns=columns, index=False)
             _ = s3_client.put_object(
-                Bucket=bucket, Key=output_path, Body=csv_buffer.getvalue()
+                Bucket=bucket, Key=dest_path+f"ingest_dt={datetime.now().strftime('%Y%m%d%H%M')}/output.csv",
+                Body=csv_buffer.getvalue()
             )
     except Exception as e:
-        msg=f'failed while writting csv to s3 due to: {e}'
+        msg=f'failed while writing csv to s3 bucket {bucket} at {dest_path} prefix due to: {e}'
         raise Exception(msg)
 
 
-def save_plot_to_s3(plt, bucket, image_path):
+def save_plot_to_s3(plt:plt, bucket:str, image_path:str):
     '''
     :param plt:
     :param bucket:
     :param image_path:
-    :return:
     '''
     try:
         img_buffer = BytesIO()
@@ -88,43 +86,44 @@ def save_plot_to_s3(plt, bucket, image_path):
         img_buffer.seek(0)
         s3 = boto3.resource('s3')
         bucket = s3.Bucket(bucket)
-        bucket.put_object(Body=img_buffer, ContentType='image/png', Key=image_path)
+        bucket.put_object(Body=img_buffer, ContentType='image/png',
+                          Key=image_path+f"ingest_dt={datetime.now().strftime('%Y%m%d%H%M')}/plot.png")
     except Exception as e:
-        msg=f'failed while writing plot as image to s3 due to: {e}'
+        msg=f'failed while writing plot as image to s3 bucket {bucket} at  {image_path} prefix due to: {e}'
         raise Exception(msg)
 
 
 if __name__ == "__main__":
     global logger
     logger = logging.getLogger('btc_filtering')
+    logger.setLevel(log_level)
 
     try:
         logger.debug('Create dataframe using the file')
-        df = create_dataframe(source_path)
+        raw_data = create_dataframe(source_path)
         logger.debug('Convert the Date field from string to date for further operations')
-        df = df.apply(lambda x: convert_str_to_date(x, x.name) if x.name == 'Date' else x)
+        raw_data = raw_data.apply(lambda x: convert_str_to_date(x, x.name) if x.name == 'Date' else x)
         logger.debug('Filter the data for only last 365 days from the maximum data point')
-        df1 = df[df['Date'] >= (df['Date'].max() - timedelta(days=365))]
+        refined_data = raw_data[raw_data['Date'] >= (raw_data['Date'].max() - timedelta(days=365))]
         logger.debug('Convert Low and High fields to EUR from USD')
-        df2 = df1.apply(lambda x: convert_to_euro(x, exchange_rate) if (x.name == 'Low' or x.name == 'High') else x)
+        final_data = refined_data.apply(lambda x: convert_to_euro(x, exchange_rate, x.name) if (x.name == 'Low' or x.name == 'High') else x)
         logger.debug('Rename Low and High fields to Low (EUR) and High (EUR) after conversion to Euros')
-        df2.rename(columns={'Low': 'Low (EUR)', 'High': 'High (EUR)'}, inplace=True)
+        final_data.rename(columns={'Low': 'Low (EUR)', 'High': 'High (EUR)'}, inplace=True)
         logger.info(f'write the results for previous year back to S3 at s3://{dest_bucket}/{dest_path}')
-        write_csv_to_s3(df2, columns_for_output_csv, dest_bucket, dest_path)
-        #df2.to_csv('output.csv', columns=['Date', 'Low (EUR)', 'High (EUR)'], index=False)
+        write_csv_to_s3(final_data, columns_for_output_csv, dest_bucket, dest_path)
         logger.debug('Prepare data to print for std output by calculating max, min and mean. '
                      'Also convert Volume to Billion')
-        data = {'min': [df2['Low (EUR)'].min(), df2['High (EUR)'].min(), df2['Volume'].min()/1000000000],
-                'max': [df2['Low (EUR)'].max(), df2['High (EUR)'].max(), df2['Volume'].max()/1000000000],
-                'mean': [df2['Low (EUR)'].mean(), df2['High (EUR)'].mean(), df2['Volume'].mean()/1000000000]}
+        data = {'min': [final_data['Low (EUR)'].min(), final_data['High (EUR)'].min(), final_data['Volume'].min()/1000000000],
+                'max': [final_data['Low (EUR)'].max(), final_data['High (EUR)'].max(), final_data['Volume'].max()/1000000000],
+                'mean': [final_data['Low (EUR)'].mean(), final_data['High (EUR)'].mean(), final_data['Volume'].mean()/1000000000]}
         logger.debug('Set precision for float numbers in Pandas')
         pd.set_option('display.float_format', lambda x: '%.2f' % x)
         logger.debug('Create dataframe for std output with index')
-        std_df = pd.DataFrame(data, index=['Low (EUR)', 'High (EUR)', 'Volume (Billion)'], dtype=float)
-        print(std_df)
+        std_data = pd.DataFrame(data, index=['Low (EUR)', 'High (EUR)', 'Volume (Billion)'], dtype=float)
+        print(std_data)
         try:
             logger.info('Plot a line chart for Low (EUR) and high (EUR) for previous year data')
-            plt.plot(df2['Low (EUR)'], df2['High (EUR)'])
+            plt.plot(final_data['Low (EUR)'], final_data['High (EUR)'])
             plt.title('Low vs High')
             plt.xlabel('Low')
             plt.ylabel('High')
