@@ -1,9 +1,7 @@
 log_level = 'INFO'
 exchange_rate = 0.87
-source_bucket='source_bucket'
 dest_bucket='dest_bucket'
 base_path='nordcloudpoc/btc_data'
-source_path = f's3://{source_bucket}/{base_path}/input/btc.csv'
 dest_path = f'{base_path}/output/'
 image_path = f'{base_path}/plot/'
 columns_for_output_csv = ['Date', 'Low (EUR)', 'High (EUR)']

@@ -12,6 +12,7 @@ import logging
 import sys
 import matplotlib.pyplot as plt
 from nordcloud_assignment_properties import *
+from awsglue.utils import getResolvedOptions
 global logger
 
 
@@ -97,10 +98,12 @@ if __name__ == "__main__":
     global logger
     logger = logging.getLogger('btc_filtering')
     logger.setLevel(log_level)
+    args = getResolvedOptions(sys.argv,
+                              ['input_key'])
 
     try:
         logger.debug('Create dataframe using the file')
-        raw_data = create_dataframe(source_path)
+        raw_data = create_dataframe(args['input_key'])
         logger.debug('Convert the Date field from string to date for further operations')
         raw_data = raw_data.apply(lambda x: convert_str_to_date(x, x.name) if x.name == 'Date' else x)
         logger.debug('Filter the data for only last 365 days from the maximum data point')
