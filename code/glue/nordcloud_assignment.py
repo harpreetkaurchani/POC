@@ -145,11 +145,13 @@ if __name__ == "__main__":
         print(std_data)
         try:
             logger.info('Plot a line chart for Low (EUR) and high (EUR) for previous year data')
-            plt.plot(final_data['Low (EUR)'], final_data['High (EUR)'])
+            plt.plot(final_data['Date'], final_data['Low (EUR)'], linestyle="-", label='Low')
+            plt.plot(final_data['Date'], final_data['High (EUR)'], linestyle="-", label='High')
             plt.title('Low vs High')
-            plt.xlabel('Low')
-            plt.ylabel('High')
-            plt.show()
+            plt.xlabel('Date')
+            plt.ylabel('Volume')
+            plt.legend()
+            #plt.show()
             save_plot_to_s3(plt, dest_bucket, image_path)
         except Exception as e:
             msg = f'failed while plotting the line chart due to: {e}'
