@@ -29,4 +29,5 @@
   15. Now we are ready with everything So just go ahead and drop the csv file to the input S3 bucket at the given S3 location.
   16. As soon as file is dropped lambda will be triggered and lambda will trigger glue job internally.
   17. You will be able to see the output csv under dest_path and image of plot under image_path , Once Glue job is completed successfully.
+  18. You can see the Expected result on std output from cloudwatch logs.
 
